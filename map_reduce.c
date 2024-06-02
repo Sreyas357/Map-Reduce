@@ -63,7 +63,7 @@ int*partition_on_keys(pm*array,int size){
     int*keys_indices = (int*)malloc(sizeof(int)*(MAX_KEYS+1));
 
     int k=1;
-    keys_indices[1]= 0;
+    keys_indices[k++]= 0;
 
     for(int i=1 ;i<size;i++){
         if(strcmp(array[i].key,array[i-1].key) !=0){
@@ -71,13 +71,9 @@ int*partition_on_keys(pm*array,int size){
         }
     }
     
-    if (strcmp(array[size-1].key,array[size-2].key) == 0){
-        keys_indices[k]=size-1;
-    }
-    
-    total_keys += k;
+    total_keys += k-1;
 
-    keys_indices[0] = k ; //key_indices[0] -> stores number of diff keys 
+    keys_indices[0] = k-1 ; //key_indices[0] -> stores number of diff keys 
 
     return keys_indices;
 }
@@ -96,7 +92,6 @@ void*sort_pm_array(void*x){
 
 unsigned long default_partition(char*key,int num_partitions){
     
-
     unsigned long hash = 5381;
     int c;
     while( (c = *(key++) ) != '\0' ){
@@ -133,40 +128,26 @@ int str_to_int(char*key){
     return -1;
 }
  
-int temp_done1,temp_done2;
+
 
 void* map_worker(void*x){
 
-    pthread_mutex_lock(&lock);
-
-    while(1){
-        if( temp_done1 == total_mappers){
-
-            printf("hello\n");
     
-            pthread_cond_broadcast(&worker);
+    while(1){
+        
+        pthread_mutex_lock(&lock);
+
+        if( number_of_mappers_done == total_mappers){
             pthread_mutex_unlock(&lock);
             return NULL ;
         }
         
-        int present = temp_done1++ ;
+        int present = number_of_mappers_done++ ;
 
         pthread_mutex_unlock(&lock);
         
 
         map_f(argv_global[present+1]);
-
-        printf("hi %s\n",argv_global[present+1]);
-        pthread_mutex_lock(&lock);
-
-        number_of_mappers_done++;
-
-        pthread_cond_signal(&master);
-        
-        printf("hi2 %s\n",argv_global[present+1]);
-        pthread_cond_wait(&worker,&lock);
-
-        printf("hi3 %s\n",argv_global[present+1]);
 
 
     }
@@ -181,16 +162,15 @@ void MR_emit(char*key,char*value){
 
     int group_no = partition_function(key,total_partitions);
 
+
     pm temp;
     memcpy(&temp.key,key,strlen(key)+1);
     memcpy(&temp.value,value,strlen(value)+1);
 
     pthread_mutex_lock(group_lock+group_no);
 
-
-        memcpy(memory[group_no],&temp,sizeof(temp));
+        memcpy(&memory[group_no][present_index[group_no]],&temp,sizeof(temp));
         present_index[group_no]++;
-
 
     pthread_mutex_unlock(group_lock+group_no);
 
@@ -221,23 +201,16 @@ void* reduce_worker(void*x){
 
     while(1){
 
-        if( temp_done2 == total_keys){
-            pthread_cond_broadcast(&worker);
+        if( number_of_reducers_done == total_keys){
             pthread_mutex_unlock(&lock);
             return NULL ;
         }
         
-        int present = temp_done2++;
+        int present = number_of_reducers_done++;
 
         pthread_mutex_unlock(&lock);
 
         reduce_f(all_keys[present].string,get_next,all_keys[present].num);
-
-        pthread_mutex_lock(&lock);
-        number_of_reducers_done++;
-
-        pthread_cond_signal(&master);
-        pthread_cond_wait(&worker,&lock);
 
     }
     return NULL;
@@ -257,7 +230,6 @@ void MR_run(int argc , char*argv[] ,Mapper map,int num_mappers , Reducer reduce 
     number_of_mappers_done = 0;
     argv_global = argv;
     total_keys = 0;
-    temp_done1=temp_done2=0;
 
     map_f = map;
     reduce_f = reduce;
@@ -270,7 +242,6 @@ void MR_run(int argc , char*argv[] ,Mapper map,int num_mappers , Reducer reduce 
         memory[i] = ( pm*)malloc(MAX_SIZE*sizeof(pm));
     }
 
-
     present_index = (int*)calloc(total_partitions,sizeof(int));
 
     pthread_t p[num_mappers];
@@ -278,18 +249,14 @@ void MR_run(int argc , char*argv[] ,Mapper map,int num_mappers , Reducer reduce 
     for(int i =0 ;i < num_mappers ;i++){
         pthread_create(&p[i],NULL,map_worker,NULL);
     }
-
-    pthread_mutex_lock(&lock);
-    while( number_of_mappers_done < total_mappers){
-        pthread_cond_wait(&master,&lock);
-        pthread_cond_broadcast(&worker);
-    }
-    
     
     for(int i =0 ;i < num_mappers ;i++){
         pthread_join(p[i],NULL);
     }
 
+    //printf("mapping part done \n");
+
+    
 
     //mapping part done ,now sorting all partition regions parralelly
 
@@ -310,7 +277,18 @@ void MR_run(int argc , char*argv[] ,Mapper map,int num_mappers , Reducer reduce 
     }
 
 
+    //printf("sorting part done %d\n",total_keys);
+
+    // for(int i= 0 ;i<num_partitions;i++){
+    //     for(int j = 0 ; j < 20 ;j++){
+    //         printf("%s %s \n",memory[i][j].key,memory[i][j].value);
+    //     }
+    // }
+
+
     //sorting part done
+    
+
     counter = (int*)malloc(sizeof(int)*total_keys);
 
     hash_table = (ht*)malloc(sizeof(ht)*TABLE_SIZE);
@@ -329,6 +307,7 @@ void MR_run(int argc , char*argv[] ,Mapper map,int num_mappers , Reducer reduce 
     
             char*key = memory[i][partion_indices[i][j]].key;
 
+
             memcpy(all_keys[current].string,key,strlen(key)+1);
             all_keys[current].num = i;
 
@@ -346,17 +325,17 @@ void MR_run(int argc , char*argv[] ,Mapper map,int num_mappers , Reducer reduce 
 
     }
 
+    // for(int i=0;i<total_keys;i++){
+    //     printf("%s %d \n",all_keys[i].string,all_keys[i].num);
+    // }
+
+    //printf("reducing part started \n");
+
     number_of_reducers_done = 0;
     pthread_t r[num_reducers];
 
     for(int i =0 ;i < num_reducers ;i++){
         pthread_create(&r[i],NULL,reduce_worker,NULL);
-    }
-
-    pthread_mutex_lock(&lock);
-    while( number_of_mappers_done < total_mappers){
-        pthread_cond_wait(&master,&lock);
-        pthread_cond_broadcast(&worker);
     }
 
     for(int i =0 ;i < num_reducers ;i++){
