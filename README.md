@@ -1,1 +1,1 @@
-Implemeting Map-Reduce Abstraction for single system
+Implemeted google's Map-Reduce Abstraction for single system
