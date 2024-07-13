@@ -8,8 +8,6 @@ void Map(char *file_name) {
     FILE *fp = fopen(file_name, "r");
     assert(fp != NULL);
 
-
-
     char *line = NULL;
     size_t size = 0;
     while (getline(&line, &size, fp) != -1) {
