@@ -17,7 +17,7 @@ Mapper map_f;
 Reducer reduce_f;
 
 typedef struct {
-    char key[MAX_WORD_LENGTH];
+    char key[MAX_WORD_LENGTH]; 
     char value[MAX_WORD_LENGTH];
 }pm; // structure defined for storing (key,value) pairs emitted by MR_emit
 
@@ -31,12 +31,15 @@ typedef struct{
     entry*list;
 }ht;       // structure for storing hash table
 
+//lock for workers doing map and reduce tasks
+pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 
-pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;   //lock for workers doing map and reduce tasks
-pthread_mutex_t group_lock[MAX_GROUPS] = {PTHREAD_MUTEX_INITIALIZER}; //lock for emiting during MR_emit
+//lock for emiting during MR_emit
+pthread_mutex_t group_lock[MAX_GROUPS] = {PTHREAD_MUTEX_INITIALIZER};
 
 pthread_cond_t master = PTHREAD_COND_INITIALIZER;
 pthread_cond_t worker = PTHREAD_COND_INITIALIZER;
+
 
 int total_mappers, number_of_mappers_done,number_of_reducers_done,total_partitions,total_keys;
 Partitioner partition_function;
@@ -44,13 +47,20 @@ Partitioner partition_function;
 
 ht *hash_table; 
 
-pm**memory; //memory for storing (key,value) pairs emitted by MR_emit
-int*present_index; //array which stores counter for partitions so to define memory where (key,value) pair to be stored
+//memory for storing (key,value) pairs emitted by MR_emit
+pm**memory; 
 
-char**argv_global;  // global variable for storing argv pointer given in MR_run
+//array which stores counter for partitions so to define memory where (key,value) pair to be stored
+int*present_index; 
 
-int*counter;  // stores present counter used in get_next
-entry*all_keys; //stores all keys ,along with partion number in structure
+// global variable for storing argv pointer given in MR_run
+char**argv_global;
+
+// stores present counter used in get_next
+int*counter;  
+
+//stores all keys ,along with partion number in structure
+entry*all_keys; 
 
 
 int compare(const void *a,const void*b){
@@ -60,6 +70,7 @@ int compare(const void *a,const void*b){
 }
 
 int*partition_on_keys(pm*array,int size){
+
     int*keys_indices = (int*)malloc(sizeof(int)*(MAX_KEYS+1));
 
     int k=1;
@@ -89,7 +100,7 @@ void*sort_pm_array(void*x){
 }
 
 
-
+// default partition function to group keys
 unsigned long default_partition(char*key,int num_partitions){
     
     unsigned long hash = 5381;
@@ -102,6 +113,8 @@ unsigned long default_partition(char*key,int num_partitions){
     }
     return hash;
 }
+
+//another hash function for partitioning
 
 unsigned int hash(const char *key) {
     unsigned long int value = 0;
@@ -148,7 +161,6 @@ void* map_worker(void*x){
         
 
         map_f(argv_global[present+1]);
-
 
     }
     return NULL;
@@ -275,16 +287,6 @@ void MR_run(int argc , char*argv[] ,Mapper map,int num_mappers , Reducer reduce 
     for(int i=0;i<total_partitions;i++){
         pthread_join(w[i],(void*)(partion_indices+i));
     }
-
-
-    //printf("sorting part done %d\n",total_keys);
-
-    // for(int i= 0 ;i<num_partitions;i++){
-    //     for(int j = 0 ; j < 20 ;j++){
-    //         printf("%s %s \n",memory[i][j].key,memory[i][j].value);
-    //     }
-    // }
-
 
     //sorting part done
     
